@@ -116,7 +116,7 @@ if __name__=="__main__":
         elif'open spotify' in query:
             subprocess.call(spotifyPath)
         elif 'send message' in query:
-            pywhatkit.sendwhatmsg("+917735243035","hey",21,00)
+            pywhatkit.sendwhatmsg("+918455038028","hey",21,00)
             print("sent successfully")
         elif 'goodbye' in query:
             speak("goodbye my friend")
