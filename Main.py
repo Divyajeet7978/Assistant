@@ -2,11 +2,11 @@ from asyncio import subprocess
 import pyttsx3
 import subprocess
 import datetime
-import pywhatkit
+
 import speech_recognition as say
 import wikipedia
 import webbrowser
-from pywhatkit.remotekit import start_server
+
 import flask
 from datetime import datetime
 import requests
@@ -115,9 +115,7 @@ if __name__=="__main__":
             webbrowser.get(edge_path).open("google.com")
         elif'open spotify' in query:
             subprocess.call(spotifyPath)
-        elif 'send message' in query:
-            pywhatkit.sendwhatmsg("+918455038028","hey",21,00)
-            print("sent successfully")
+        
         elif 'goodbye' in query:
             speak("goodbye my friend")
         elif 'weather' in query:
