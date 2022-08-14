@@ -31,7 +31,7 @@ def wishMe():
             speak("Good Afternoon Divyajeet!")
         else:
             speak("Good Evening Divyajeet!")  
-        speak("How can i help you today sir ?") 
+        speak("How can i help you today ?") 
 def listen():
     r= say.Recognizer()
     with say.Microphone() as source:
