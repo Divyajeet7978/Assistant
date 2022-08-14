@@ -2,11 +2,9 @@ from asyncio import subprocess
 import pyttsx3
 import subprocess
 import datetime
-
 import speech_recognition as say
 import wikipedia
 import webbrowser
-
 import flask
 from datetime import datetime
 import requests
@@ -28,12 +26,12 @@ def speak(audio):
 def wishMe():
         hour=int(datetime.now().hour)
         if hour>=0 and hour<12 :
-            speak("good morning sir!")
+            speak("good morning Divyajeet!")
         elif hour>=12 and hour<18:
-            speak("Good Afternoon sir!")
+            speak("Good Afternoon Divyajeet!")
         else:
-            speak("Good Evening sir!")  
-        speak("How can i help you today") 
+            speak("Good Evening Divyajeet!")  
+        speak("How can i help you today sir ?") 
 def listen():
     r= say.Recognizer()
     with say.Microphone() as source:
@@ -115,7 +113,6 @@ if __name__=="__main__":
             webbrowser.get(edge_path).open("google.com")
         elif'open spotify' in query:
             subprocess.call(spotifyPath)
-        
         elif 'goodbye' in query:
             speak("goodbye my friend")
         elif 'weather' in query:
