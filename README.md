@@ -37,15 +37,6 @@ Run the assistant by executing:
 python voice_assistant.py
 ```
 
-### Available Commands
-
-- "Wikipedia [query]" - Search Wikipedia
-- "Open YouTube" - Open YouTube in browser
-- "Open Google" - Open Google in browser
-- "Open Spotify" - Launch Spotify application
-- "Weather [city]" - Get weather information for a city
-- "Goodbye" or "Exit" - Quit the assistant
-
 ## Configuration
 
 The script requires some configuration:
