@@ -1,4 +1,3 @@
-```markdown
 # Voice Assistant
 
 A simple Python-based voice assistant that can perform various tasks like web browsing, fetching weather information, searching Wikipedia, and more using voice commands.
@@ -25,7 +24,6 @@ Before running the project, ensure you have the following installed:
    ```bash
    git clone [repository-url]
    cd voice-assistant
-   ```
 
 2. Install the required dependencies:
    ```bash
