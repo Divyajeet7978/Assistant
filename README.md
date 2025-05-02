@@ -6,7 +6,6 @@
 
 A sophisticated voice assistant with natural language processing, weather forecasting, media control, and more - featuring a beautiful graphical interface.
 
-![Voice Assistant Demo](demo-screenshot.png) *(Example screenshot - replace with actual screenshot of your app)*
 
 ## ✨ Features
 
