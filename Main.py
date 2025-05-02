@@ -467,35 +467,37 @@ class UltimateVoiceAssistant:
             self.speak("Sorry, I couldn't open Spotify.")
 
     async def fetch_weather(self, query: str = None) -> None:
-        """Fetch and announce weather information."""
-        city = None
-        
-        if query:
-            # Extract city name from query if present
-            parts = query.split()
-            for i, part in enumerate(parts):
-                if part in ['for', 'in', 'of'] and i < len(parts) - 1:
-                    city = parts[i+1]
-                    break
-        
-        if not city:
-            self.speak("Which city's weather would you like to know?")
-            city_response = await self.listen()
-            if city_response:
-                city = city_response
-            else:
+        """Fetch and announce weather information using WeatherAPI.com"""
+        try:
+            # Get API key from environment variables
+            api_key = os.getenv("WEATHERAPI_KEY")
+            if not api_key:
+                self.speak("Weather service is not properly configured.")
+                logger.error("WeatherAPI key missing from environment variables")
                 return
 
-        try:
-            if not self.weather_api_key:
-                self.speak("Weather service is not configured.")
-                return
-                
-            weather_url = (
-                f'http://api.openweathermap.org/data/2.5/weather?'
-                f'q={city}&appid={self.weather_api_key}&units=metric'
-            )
+            city = None
             
+            # Extract city name from query if present
+            if query:
+                parts = query.split()
+                for i, part in enumerate(parts):
+                    if part in ['for', 'in', 'of'] and i < len(parts) - 1:
+                        city = parts[i+1]
+                        break
+            
+            # If no city found in query, ask user
+            if not city:
+                self.speak("Which city's weather would you like to know?")
+                city_response = await self.listen()
+                if city_response:
+                    city = city_response
+                else:
+                    return
+
+            weather_url = f'http://api.weatherapi.com/v1/current.json?key={api_key}&q={city}&aqi=no'
+            
+            # Make API request
             response = await asyncio.get_event_loop().run_in_executor(
                 None, 
                 requests.get, 
@@ -504,28 +506,36 @@ class UltimateVoiceAssistant:
             
             weather_info = response.json()
 
-            if weather_info.get('cod') == 200:
-                temp = weather_info['main']['temp']
-                feels_like = weather_info['main']['feels_like']
-                humidity = weather_info['main']['humidity']
-                description = weather_info['weather'][0]['description'].capitalize()
-                wind_speed = weather_info['wind']['speed']
-
+            if response.status_code == 200:
+                current = weather_info['current']
+                location = weather_info['location']
+                
+                temp = current['temp_c']
+                feels_like = current['feelslike_c']
+                humidity = current['humidity']
+                wind_speed = current['wind_kph']
+                condition = current['condition']['text']
+                
                 weather_report = (
-                    f"The weather in {city} is currently {description}. "
-                    f"The temperature is {temp:.1f}°C, "
-                    f"but it feels like {feels_like:.1f}°C. "
-                    f"The humidity is {humidity}% and wind speed is {wind_speed} m/s."
+                    f"Current weather in {location['name']}: "
+                    f"Condition: {condition}. "
+                    f"Temperature: {temp}°C, "
+                    f"Feels like: {feels_like}°C. "
+                    f"Humidity: {humidity}%. "
+                    f"Wind speed: {wind_speed} km/h."
                 )
                 self.speak(weather_report)
             else:
-                error_msg = weather_info.get('message', 'Unknown error')
+                error_msg = weather_info.get('error', {}).get('message', 'Unknown error')
                 logger.error(f"Weather API error: {error_msg}")
                 self.speak(f"Sorry, I couldn't find weather information for {city}.")
                 
         except requests.exceptions.RequestException as e:
             logger.error(f"Weather API request failed: {e}")
             self.speak("Sorry, I'm having trouble accessing the weather service.")
+        except KeyError as e:
+            logger.error(f"Unexpected API response format: {e}")
+            self.speak("Sorry, I received unexpected weather data format.")
         except Exception as e:
             logger.error(f"Error fetching weather: {e}")
             self.speak("Sorry, I encountered an error while fetching weather information.")
