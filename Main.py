@@ -1,122 +1,609 @@
-from asyncio import subprocess
-import pyttsx3
+import asyncio
+import logging
+import os
+import platform
 import subprocess
-import datetime
-import speech_recognition as say
+import sys
+import threading
+from datetime import datetime
+from pathlib import Path
+from typing import Optional, Dict, Callable, Any
+
+import pyttsx3
+import requests
+import speech_recognition as sr
 import wikipedia
 import webbrowser
-import flask
-from datetime import datetime
-import requests
-engine =pyttsx3.init()
-rate = engine.getProperty('rate')
-voices =engine.getProperty('voices')
-engine.setProperty('rate', rate-40)
-print(voices[0].id)
-engine.setProperty('voice',voices[0].id)
-edge_path="C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe %s" 
-#runs a command prompt to fetch username and decode the byte output to UTF-8 
-userName = subprocess.check_output("echo %USERNAME%", shell = True).decode("UTF-8") 
-#Windows, for god knows whatever reason, is incapable of setting its home folder's name longer than 5 characters
-userNameTrimmed = userName[0:5]
-spotifyPath = "C://Users//" + userNameTrimmed + "//AppData//Roaming//Spotify//Spotify.exe"
-def speak(audio):
-    engine.say(audio)
-    engine.runAndWait()
-def wishMe():
-        hour=int(datetime.now().hour)
-        if hour>=0 and hour<12 :
-            speak("good morning Divyajeet!")
-        elif hour>=12 and hour<18:
-            speak("Good Afternoon Divyajeet!")
-        else:
-            speak("Good Evening Divyajeet!")  
-        speak("How can i help you today ?") 
-def listen():
-    r= say.Recognizer()
-    with say.Microphone() as source:
-        print("Listening")
-        r.energy_threshold=200
-        r.pause_threshold=1
-        r.phrase_threshold=0.5
-        audio= r.listen(source)
-    try:
-        print("Recognizing")
-        query= r.recognize_google(audio,language='en-in')
-        print(f"{query}\n")
-    except Exception as e:
-        print("say that again please")
-        return "None"    
-    return query
-def time_format_for_location(utc_with_tz):
-    local_time = datetime.utcfromtimestamp(utc_with_tz)
-    return local_time.time()
-def fetchWeather():
-    r = say.Recognizer()
-    with say.Microphone() as source:
-        speak("What is the name of the city you want to know the weather of")
-        r.energy_threshold = 200
-        r.pause_threshold = 1
-        r.phrase_threshold = 0.5
-        audio = r.listen(source)
-    try:
-        cityName = r.recognize_google(audio, language = "en-in")
-        print(f"{query}\n")
-    except:
-        print("Didn't catch that. Say that again")
-        return "None"
-    
-    api_key = "c2c5dff269708e2c299a250cf1baccbf"
-    # API url
-    weather_url = 'http://api.openweathermap.org/data/2.5/weather?q=' + cityName + '&appid='+api_key
-    # Get the response from fetched url
-    response = requests.get(weather_url)
-    # changing response from json to python readable 
-    weather_info = response.json()
-    #as per API documentation, if the cod is 200, it means that weather data was successfully fetched
-    if weather_info['cod'] == 200:
-        kelvin = 273 # value of kelvin
-#-----------Storing the fetched values of weather of a city
-        temp = int(weather_info['main']['temp'] - kelvin) #converting default kelvin value to Celcius
-        feels_like_temp = int(weather_info['main']['feels_like'] - kelvin)
-        pressure = weather_info['main']['pressure']
-        humidity = weather_info['main']['humidity']
-        wind_speed = weather_info['wind']['speed'] * 3.6
-        sunrise = weather_info['sys']['sunrise']
-        sunset = weather_info['sys']['sunset']
-        timezone = weather_info['timezone']
-        cloudy = weather_info['clouds']['all']
-        description = weather_info['weather'][0]['description']
-        sunrise_time = time_format_for_location(sunrise + timezone)
-        sunset_time = time_format_for_location(sunset + timezone)
-        #assigning Values to our weather varaible, to display as output
+from dotenv import load_dotenv
+import tkinter as tk
+from tkinter import scrolledtext, ttk
+
+# Configure logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    handlers=[
+        logging.FileHandler('assistant.log'),
+        logging.StreamHandler()
+    ]
+)
+logger = logging.getLogger(__name__)
+
+class VoiceAssistantApp:
+    def __init__(self, root):
+        self.root = root
+        self.root.title("Ultimate Voice Assistant")
+        self.root.geometry("800x600")
+        self.root.resizable(True, True)
         
-        weather = f"\nWeather of: {cityName}\nTemperature (Celsius): {temp}°\nFeels like in (Celsius): {feels_like_temp}°\nPressure: {pressure} hPa\nHumidity: {humidity}%\nSunrise at {sunrise_time} and Sunset at {sunset_time}\nCloud: {cloudy}%\nInfo: {description}"
-    else:
-        weather = f"\n\tWeather for '{cityName}' not found!\n\tKindly Enter valid City Name !!"
-    
-    speak(weather)
-if __name__=="__main__":
-    wishMe()
-    while True:
-        query = listen().lower()
-        if'wikipedia' in query:
-            speak('searching through wikipedia')
-            query = query.replace("wikipedia","")
-            results = wikipedia.summary(query, line=1)
-            speak("According to wikipedia")
-            print(results)
-            speak(results)     
-        elif'open youtube' in query:
-            webbrowser.get(edge_path).open("youtube.com")
-        elif'open google' in query:
-            webbrowser.get(edge_path).open("google.com")
-        elif'open spotify' in query:
-            subprocess.call(spotifyPath)
-        elif 'goodbye' in query:
-            speak("goodbye my friend")
-        elif 'weather' in query:
-            fetchWeather()
-        elif 'exit' or 'exit program' or 'quit' in query:
-            speak("Have a nice day!")
-            break
+        # Set up graceful window closing
+        self.root.protocol("WM_DELETE_WINDOW", self.on_closing)
+        
+        # Load environment variables
+        load_dotenv()
+        
+        # Initialize assistant
+        self.assistant = UltimateVoiceAssistant(self)
+        
+        # UI Elements
+        self.create_widgets()
+        
+        # Start assistant in a separate thread
+        self.assistant_thread = threading.Thread(target=self.start_assistant, daemon=True)
+        self.assistant_thread.start()
+
+    def create_widgets(self):
+        """Create all GUI widgets"""
+        # Main frame
+        main_frame = ttk.Frame(self.root, padding="10")
+        main_frame.pack(fill=tk.BOTH, expand=True)
+        
+        # Title
+        title_label = ttk.Label(
+            main_frame, 
+            text="Ultimate Voice Assistant", 
+            font=('Helvetica', 16, 'bold')
+        )
+        title_label.pack(pady=10)
+        
+        # Status frame
+        status_frame = ttk.Frame(main_frame)
+        status_frame.pack(fill=tk.X, pady=5)
+        
+        self.status_label = ttk.Label(
+            status_frame, 
+            text="Ready", 
+            foreground="green"
+        )
+        self.status_label.pack(side=tk.LEFT)
+        
+        # Mic button
+        self.mic_button = ttk.Button(
+            status_frame, 
+            text="🎤", 
+            command=self.toggle_listening,
+            width=3
+        )
+        self.mic_button.pack(side=tk.RIGHT)
+        
+        # Conversation display
+        self.conversation_text = scrolledtext.ScrolledText(
+            main_frame,
+            wrap=tk.WORD,
+            width=60,
+            height=20,
+            font=('Helvetica', 10)
+        )
+        self.conversation_text.pack(fill=tk.BOTH, expand=True)
+        self.conversation_text.configure(state='disabled')
+        
+        # Command buttons frame
+        buttons_frame = ttk.Frame(main_frame)
+        buttons_frame.pack(fill=tk.X, pady=10)
+        
+        # Quick command buttons
+        commands = [
+            ("Wikipedia Search", self.assistant.handle_wikipedia),
+            ("Open YouTube", self.assistant.open_youtube),
+            ("Open Google", self.assistant.open_google),
+            ("Weather", self.assistant.fetch_weather),
+            ("Exit", self.assistant.exit_assistant)
+        ]
+        
+        for text, command in commands:
+            button = ttk.Button(
+                buttons_frame,
+                text=text,
+                command=lambda cmd=command: self.execute_command(cmd)
+            )
+            button.pack(side=tk.LEFT, padx=5, fill=tk.X, expand=True)
+
+    def toggle_listening(self):
+        """Toggle listening state"""
+        if self.assistant.is_listening:
+            self.assistant.stop_listening()
+            self.mic_button.config(text="🎤")
+            self.update_status("Ready", "green")
+        else:
+            self.assistant.start_listening()
+            self.mic_button.config(text="🔴")
+            self.update_status("Listening...", "blue")
+
+    def execute_command(self, command):
+        """Execute a command from button"""
+        self.add_to_conversation("You: Button command")
+        if asyncio.iscoroutinefunction(command):
+            asyncio.run_coroutine_threadsafe(command(""), self.assistant.loop)
+        else:
+            command("")
+
+    def start_assistant(self):
+        """Start the assistant in a separate thread"""
+        try:
+            self.assistant.loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(self.assistant.loop)
+            self.assistant.loop.run_until_complete(self.assistant.run())
+        except Exception as e:
+            logger.error(f"Assistant thread failed: {e}")
+            self.update_status("Error in assistant", "red")
+
+    def add_to_conversation(self, text):
+        """Add text to conversation display"""
+        self.conversation_text.configure(state='normal')
+        self.conversation_text.insert(tk.END, text + "\n")
+        self.conversation_text.configure(state='disabled')
+        self.conversation_text.see(tk.END)
+
+    def update_status(self, text, color):
+        """Update status label"""
+        self.status_label.config(text=text, foreground=color)
+
+    def on_closing(self):
+        """Handle window closing"""
+        self.assistant.stop_listening()
+        if hasattr(self.assistant, 'loop') and self.assistant.loop.is_running():
+            self.assistant.loop.stop()
+        self.root.destroy()
+
+class UltimateVoiceAssistant:
+    def __init__(self, app):
+        self.app = app
+        self.loop = None
+        self.is_listening = False
+        self.setup()
+        
+        # Command mappings with descriptions
+        self.commands: Dict[str, Dict[str, Any]] = {
+            'wikipedia': {
+                'handler': self.handle_wikipedia,
+                'description': 'Search Wikipedia for information'
+            },
+            'open youtube': {
+                'handler': self.open_youtube,
+                'description': 'Open YouTube in browser'
+            },
+            'open google': {
+                'handler': self.open_google,
+                'description': 'Open Google in browser'
+            },
+            'open spotify': {
+                'handler': self.open_spotify,
+                'description': 'Launch Spotify application'
+            },
+            'weather': {
+                'handler': self.fetch_weather,
+                'description': 'Get weather information for a city'
+            },
+            'goodbye': {
+                'handler': self.exit_assistant,
+                'description': 'Exit the voice assistant'
+            },
+            'exit': {
+                'handler': self.exit_assistant,
+                'description': 'Exit the voice assistant'
+            },
+            'quit': {
+                'handler': self.exit_assistant,
+                'description': 'Exit the voice assistant'
+            },
+            'help': {
+                'handler': self.show_help,
+                'description': 'Show available commands'
+            }
+        }
+
+    def setup(self):
+        """Initialize all components"""
+        try:
+            self.engine = self.init_tts_engine()
+            self.recognizer = sr.Recognizer()
+            self.browser_path = self.get_browser_path()
+            self.spotify_path = self.get_spotify_path()
+            self.user_name = self.get_user_name()
+            self.weather_api_key = os.getenv('WEATHER_API_KEY')
+            
+            # Configure microphone
+            with sr.Microphone() as source:
+                self.recognizer.adjust_for_ambient_noise(source, duration=1)
+                
+            logger.info("Voice assistant initialized successfully")
+            self.check_configuration()
+        except Exception as e:
+            logger.error(f"Initialization failed: {e}")
+            raise
+
+    def check_configuration(self):
+        """Validate required configuration"""
+        if not self.weather_api_key:
+            logger.warning("Weather API key not configured")
+        if self.spotify_path is not None and not os.path.exists(self.spotify_path):
+            logger.warning(f"Spotify path not found: {self.spotify_path}")
+
+    def init_tts_engine(self):
+        """Initialize and configure the text-to-speech engine."""
+        try:
+            engine = pyttsx3.init()
+            rate = engine.getProperty('rate')
+            engine.setProperty('rate', max(100, rate - 40))  # Ensure rate doesn't go too low
+            voices = engine.getProperty('voices')
+            
+            # Try to select a more natural sounding voice if available
+            preferred_voices = [
+                'english-us', 'english', 'Microsoft David Desktop'
+            ]
+            for voice in voices:
+                if any(pref.lower() in voice.name.lower() for pref in preferred_voices):
+                    engine.setProperty('voice', voice.id)
+                    break
+            else:
+                engine.setProperty('voice', voices[0].id)
+                
+            return engine
+        except Exception as e:
+            logger.error(f"TTS engine initialization failed: {e}")
+            raise
+
+    def get_browser_path(self) -> str:
+        """Get the path to the default browser with cross-platform support."""
+        system = platform.system()
+        if system == 'Windows':
+            return "C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe %s"
+        elif system == 'Darwin':  # macOS
+            return "open -a /Applications/Safari.app %s"
+        else:  # Linux
+            return "xdg-open %s"
+
+    def get_spotify_path(self) -> Optional[str]:
+        """Get the path to Spotify executable with cross-platform support."""
+        system = platform.system()
+        try:
+            if system == 'Windows':
+                username = os.getenv('USERNAME')
+                path = f"C:/Users/{username}/AppData/Roaming/Spotify/Spotify.exe"
+                return path if os.path.exists(path) else None
+            elif system == 'Darwin':  # macOS
+                path = "/Applications/Spotify.app/Contents/MacOS/Spotify"
+                return path if os.path.exists(path) else None
+            else:  # Linux
+                try:
+                    subprocess.run(["which", "spotify"], check=True)
+                    return "spotify"
+                except subprocess.CalledProcessError:
+                    return None
+        except Exception as e:
+            logger.warning(f"Couldn't get Spotify path: {e}")
+            return None
+
+    def get_user_name(self) -> str:
+        """Get the current user's name with cross-platform support."""
+        try:
+            name = os.getenv('ASSISTANT_USER_NAME')
+            if name:
+                return name
+                
+            system = platform.system()
+            if system == 'Windows':
+                return os.getenv('USERNAME', 'User')
+            else:  # macOS/Linux
+                return os.getenv('USER', 'User')
+        except Exception as e:
+            logger.warning(f"Couldn't get user name: {e}")
+            return "User"
+
+    def speak(self, text: str) -> None:
+        """Convert text to speech and update UI."""
+        logger.info(f"Speaking: {text}")
+        self.app.add_to_conversation(f"Assistant: {text}")
+        try:
+            self.engine.say(text)
+            self.engine.runAndWait()
+        except Exception as e:
+            logger.error(f"Error in speech synthesis: {e}")
+            self.app.add_to_conversation("[Speech synthesis failed]")
+
+    def start_listening(self):
+        """Start continuous listening."""
+        self.is_listening = True
+        self.app.update_status("Listening...", "blue")
+
+    def stop_listening(self):
+        """Stop continuous listening."""
+        self.is_listening = False
+        self.app.update_status("Ready", "green")
+
+    async def listen(self) -> Optional[str]:
+        """Listen for and recognize speech input."""
+        if not self.is_listening:
+            return None
+            
+        with sr.Microphone() as source:
+            self.app.update_status("Listening...", "blue")
+            logger.info("Listening...")
+            
+            try:
+                audio = self.recognizer.listen(
+                    source, 
+                    timeout=5, 
+                    phrase_time_limit=8
+                )
+                self.app.update_status("Recognizing...", "orange")
+                logger.info("Recognizing...")
+                
+                query = self.recognizer.recognize_google(
+                    audio, 
+                    language='en-in'
+                ).lower()
+                
+                logger.info(f"Recognized: {query}")
+                self.app.add_to_conversation(f"You: {query}")
+                return query
+                
+            except sr.WaitTimeoutError:
+                logger.info("Listening timed out (no speech detected)")
+                return None
+            except sr.UnknownValueError:
+                self.speak("I didn't catch that. Could you please repeat?")
+                logger.warning("Speech recognition could not understand audio")
+                return None
+            except sr.RequestError as e:
+                self.speak("Sorry, I'm having trouble accessing the speech recognition service.")
+                logger.error(f"Could not request results from speech recognition service: {e}")
+                return None
+            except Exception as e:
+                logger.error(f"Error in recognition: {e}")
+                self.speak("Sorry, I encountered an error. Please try again.")
+                return None
+            finally:
+                if self.is_listening:
+                    self.app.update_status("Listening...", "blue")
+                else:
+                    self.app.update_status("Ready", "green")
+
+    def greet(self) -> None:
+        """Greet the user based on time of day."""
+        hour = datetime.now().hour
+        if 0 <= hour < 12:
+            greeting = f"Good morning {self.user_name}!"
+        elif 12 <= hour < 18:
+            greeting = f"Good afternoon {self.user_name}!"
+        else:
+            greeting = f"Good evening {self.user_name}!"
+        
+        self.speak(greeting)
+        self.speak("How can I help you today?")
+
+    def handle_wikipedia(self, query: str) -> None:
+        """Handle Wikipedia search requests."""
+        try:
+            search_query = query.replace("wikipedia", "").strip()
+            if not search_query:
+                self.speak("What would you like me to search on Wikipedia?")
+                return
+                
+            self.speak(f"Searching Wikipedia for {search_query}")
+            
+            # Set language for Wikipedia
+            wikipedia.set_lang("en")
+            
+            try:
+                results = wikipedia.summary(
+                    search_query, 
+                    sentences=2,
+                    auto_suggest=True
+                )
+                self.speak("According to Wikipedia")
+                self.speak(results)
+            except wikipedia.exceptions.DisambiguationError as e:
+                options = e.options[:3]  # Get first 3 options
+                self.speak(f"There are multiple options for {search_query}. Did you mean: {', '.join(options)}?")
+            except wikipedia.exceptions.PageError:
+                self.speak(f"Sorry, I couldn't find any information about {search_query}.")
+            except Exception as e:
+                logger.error(f"Wikipedia search error: {e}")
+                self.speak("Sorry, I encountered an error while searching Wikipedia.")
+                
+        except Exception as e:
+            logger.error(f"Wikipedia error: {e}")
+            self.speak("Sorry, I couldn't access Wikipedia right now.")
+
+    def open_youtube(self, _: str = None) -> None:
+        """Open YouTube in the default browser."""
+        self.speak("Opening YouTube")
+        try:
+            webbrowser.get(self.browser_path).open("https://youtube.com")
+        except webbrowser.Error as e:
+            logger.error(f"Failed to open browser: {e}")
+            self.speak("Sorry, I couldn't open the web browser.")
+        except Exception as e:
+            logger.error(f"Failed to open YouTube: {e}")
+            self.speak("Sorry, I couldn't open YouTube.")
+
+    def open_google(self, _: str = None) -> None:
+        """Open Google in the default browser."""
+        self.speak("Opening Google")
+        try:
+            webbrowser.get(self.browser_path).open("https://google.com")
+        except webbrowser.Error as e:
+            logger.error(f"Failed to open browser: {e}")
+            self.speak("Sorry, I couldn't open the web browser.")
+        except Exception as e:
+            logger.error(f"Failed to open Google: {e}")
+            self.speak("Sorry, I couldn't open Google.")
+
+    def open_spotify(self, _: str = None) -> None:
+        """Open Spotify application."""
+        if self.spotify_path is None:
+            self.speak("Spotify is not configured on this system.")
+            return
+            
+        self.speak("Opening Spotify")
+        try:
+            if platform.system() == 'Windows':
+                os.startfile(self.spotify_path)
+            else:
+                subprocess.Popen(self.spotify_path)
+        except Exception as e:
+            logger.error(f"Failed to open Spotify: {e}")
+            self.speak("Sorry, I couldn't open Spotify.")
+
+    async def fetch_weather(self, query: str = None) -> None:
+        """Fetch and announce weather information."""
+        city = None
+        
+        if query:
+            # Extract city name from query if present
+            parts = query.split()
+            for i, part in enumerate(parts):
+                if part in ['for', 'in', 'of'] and i < len(parts) - 1:
+                    city = parts[i+1]
+                    break
+        
+        if not city:
+            self.speak("Which city's weather would you like to know?")
+            city_response = await self.listen()
+            if city_response:
+                city = city_response
+            else:
+                return
+
+        try:
+            if not self.weather_api_key:
+                self.speak("Weather service is not configured.")
+                return
+                
+            weather_url = (
+                f'http://api.openweathermap.org/data/2.5/weather?'
+                f'q={city}&appid={self.weather_api_key}&units=metric'
+            )
+            
+            response = await asyncio.get_event_loop().run_in_executor(
+                None, 
+                requests.get, 
+                weather_url
+            )
+            
+            weather_info = response.json()
+
+            if weather_info.get('cod') == 200:
+                temp = weather_info['main']['temp']
+                feels_like = weather_info['main']['feels_like']
+                humidity = weather_info['main']['humidity']
+                description = weather_info['weather'][0]['description'].capitalize()
+                wind_speed = weather_info['wind']['speed']
+
+                weather_report = (
+                    f"The weather in {city} is currently {description}. "
+                    f"The temperature is {temp:.1f}°C, "
+                    f"but it feels like {feels_like:.1f}°C. "
+                    f"The humidity is {humidity}% and wind speed is {wind_speed} m/s."
+                )
+                self.speak(weather_report)
+            else:
+                error_msg = weather_info.get('message', 'Unknown error')
+                logger.error(f"Weather API error: {error_msg}")
+                self.speak(f"Sorry, I couldn't find weather information for {city}.")
+                
+        except requests.exceptions.RequestException as e:
+            logger.error(f"Weather API request failed: {e}")
+            self.speak("Sorry, I'm having trouble accessing the weather service.")
+        except Exception as e:
+            logger.error(f"Error fetching weather: {e}")
+            self.speak("Sorry, I encountered an error while fetching weather information.")
+
+    def show_help(self, _: str = None) -> None:
+        """Show available commands."""
+        help_text = "Here's what I can do:\n"
+        for command, info in self.commands.items():
+            help_text += f"- {command}: {info['description']}\n"
+        self.speak(help_text)
+
+    def exit_assistant(self, _: str = None) -> bool:
+        """Handle exit commands."""
+        self.speak(f"Goodbye {self.user_name}, have a nice day!")
+        self.app.root.after(1000, self.app.root.destroy)
+        return True
+
+    async def process_command(self, command: str) -> bool:
+        """Process recognized commands."""
+        if not command:
+            return False
+            
+        # Check for exact matches first
+        for cmd, info in self.commands.items():
+            if cmd in command:
+                handler = info['handler']
+                try:
+                    if asyncio.iscoroutinefunction(handler):
+                        await handler(command)
+                    else:
+                        handler(command)
+                    
+                    if cmd in ['exit', 'quit', 'goodbye']:
+                        return True
+                    return False
+                except Exception as e:
+                    logger.error(f"Error executing command {cmd}: {e}")
+                    self.speak("Sorry, I had trouble executing that command.")
+                    return False
+        
+        # If no exact match, check for partial matches
+        for cmd, info in self.commands.items():
+            if any(word in command for word in cmd.split()):
+                handler = info['handler']
+                try:
+                    if asyncio.iscoroutinefunction(handler):
+                        await handler(command)
+                    else:
+                        handler(command)
+                    return False
+                except Exception as e:
+                    logger.error(f"Error executing command {cmd}: {e}")
+                    self.speak("Sorry, I had trouble executing that command.")
+                    return False
+        
+        self.speak("I didn't understand that command. Say 'help' for available commands.")
+        return False
+
+    async def run(self):
+        """Main execution loop for the voice assistant."""
+        self.greet()
+        
+        while True:
+            if self.is_listening:
+                command = await self.listen()
+                if command and await self.process_command(command):
+                    break
+            await asyncio.sleep(0.1)
+
+def main():
+    """Main entry point for the application."""
+    try:
+        root = tk.Tk()
+        app = VoiceAssistantApp(root)
+        root.mainloop()
+    except Exception as e:
+        logger.critical(f"Application failed: {e}")
+        sys.exit(1)
+
+if __name__ == "__main__":
+    main()
